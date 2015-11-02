@@ -151,7 +151,7 @@ func (r *Report) Format(p *Printer) {
 	for _, row := range r.Domains {
 		p.Print(
 			r.DateBegin.UTC().Format(DATEFMT),
-			r.DateEnd.UTC().Format(DATEFMT),
+			r.DateEnd.UTC().Sub(r.DateBegin),
 			r.Organization,
 			r.Domain,
 			row.HeaderFrom,
@@ -204,8 +204,8 @@ func main() {
 
 	p := &Printer{}
 
-	p.Print("Begin",
-		"End",
+	p.Print("Start time",
+		"Duration",
 		"Receiver",
 		"Domain",
 		"HeaderFrom",
