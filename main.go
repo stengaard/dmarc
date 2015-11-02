@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 )
 
@@ -145,10 +146,10 @@ func (r *Report) Add(rec AggregateReportRecord) {
 	}
 }
 
-func (r *Report) Format() {
-	const DATEFMT = "2006-01-02 03:04:05"
+func (r *Report) Format(p *Printer) {
+	const DATEFMT = "2006-01-02 15:04:05"
 	for _, row := range r.Domains {
-		fmt.Printf("%19s,%19s,%22s,%12s,%20s,%7d,%7d,%7d,%7d,%7d,%7d,%7d\n",
+		p.Print(
 			r.DateBegin.UTC().Format(DATEFMT),
 			r.DateEnd.UTC().Format(DATEFMT),
 			r.Organization,
@@ -169,13 +170,43 @@ func init() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 }
 
+type Printer struct {
+	w   *tabwriter.Writer
+	mux sync.Mutex
+}
+
+func (p *Printer) Print(s ...interface{}) {
+	out := make([]string, len(s))
+	for i := 0; i < len(s); i++ {
+		out[i] = fmt.Sprint(s[i])
+	}
+
+	p.mux.Lock()
+	defer p.mux.Unlock()
+
+	if p.w == nil {
+		p.w = tabwriter.NewWriter(os.Stdout, 7, 4, 1, ' ', 0)
+	}
+
+	fmt.Fprint(p.w, strings.Join(out, "\t")+"\n")
+}
+
+func (p *Printer) Close() error {
+	err := p.w.Flush()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Tab writer err: %s\n", err)
+	}
+	return err
+}
+
 func main() {
 	flag.Parse()
 
-	fmt.Printf("%19s,%19s,%22s,%12s,%20s,%7s,%7s,%7s,%7s,%7s,%7s,%7s\n",
-		"Date Begin",
-		"Date End",
-		"Organization",
+	p := &Printer{}
+
+	p.Print("Begin",
+		"End",
+		"Receiver",
 		"Domain",
 		"HeaderFrom",
 		"Passed",
@@ -208,8 +239,9 @@ func main() {
 		}
 
 		for _, r := range reports {
-			r.Format()
+			r.Format(p)
 		}
+		p.Close()
 		exit <- 1
 	}()
 
@@ -276,7 +308,7 @@ func parse(r io.Reader, response chan *Report) {
 	fb := &AggregateReport{}
 	err := xml.NewDecoder(r).Decode(fb)
 	if err != nil {
-		log.Fatal(err)
+		log.Print("excluding file", err)
 	}
 
 	report := &Report{
